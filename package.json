@@ -1,0 +1,23 @@
+{
+  "name": "stocksense-ims",
+  "version": "1.0.0",
+  "private": true,
+  "description": "StockSense - Enterprise IMS: pure PostgreSQL double-entry stock ledger, Next.js monolith with Server Actions",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js",
+    "setup": "node scripts/setup-db.js",
+    "user:create": "node scripts/create-user.js",
+    "test": "node scripts/test-engines.js",
+    "verify:auth": "node scripts/verify-auth-flow.js"
+  },
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "embedded-postgres": "^17.5.0-beta.15",
+    "next": "^15.5.0",
+    "pg": "^8.16.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "zod": "^4.1.5"
+  }
+}

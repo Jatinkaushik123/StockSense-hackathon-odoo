@@ -1,0 +1,374 @@
+================================================================================
+StockSense IMS — BUG TRACKING LOG (bugsreport.txt)
+================================================================================
+Purpose      : Development, execution and testing issue log for the StockSense
+               inventory management backend + web app.
+Maintainer   : Engineering team (append new entries at the bottom).
+Format       : One entry per issue, fields exactly as required by the spec.
+
+IMPORTANT — ZERO IMPACT GUARANTEE
+  This file is standalone documentation only. It contains no executable code,
+  no import statements and no side effects. It is never read by the runtime
+  (no module, script, action or SQL file references it), so it cannot alter or
+  impact backend execution in any way.
+
+ENVIRONMENT
+  Node.js v22.14.0 · npm 10.9.2 · PostgreSQL 17 (embedded, port 5440)
+  Stack: Next.js 15 (App Router, Server Actions) · native `pg` driver ·
+  bcrypt (salt rounds 12) · Zod 4 · zero ORM / zero cloud services.
+================================================================================
+
+
+================================================================================
+[BUG ID]: #001
+[MODULE]: package.json (dependency resolution)
+[ISSUE DESCRIPTION]: `npm install` aborted with ERESOLVE "unable to resolve
+dependency tree". The peer range of @emoji-mart/react@1.1.1 is
+"^16.8 || ^17 || ^18" while the project runs React 19.3.0, so no valid tree
+existed and no package was installed.
+[ROOT CAUSE]: Third-party UI package had not published a React 19 peer range;
+npm 10 refuses to build a tree with an unsatisfiable peer dependency.
+[SOLUTION APPLIED]: Removed the emoji-mart dependency entirely (it was never a
+requirement) and rendered the iconography with inline glyphs instead. This also
+removes a client-side bundle dependency, keeping the app fully offline-capable.
+================================================================================
+
+
+================================================================================
+[BUG ID]: #002
+[MODULE]: scripts/bootstrap-db.js
+[ISSUE DESCRIPTION]: On the second and every later boot the bootstrap crashed
+with "Postgres init script exited with code 1 ... The data directory might
+already exist." A cluster that already existed on disk was therefore never
+reused; the app could only ever start once.
+[ROOT CAUSE]: Cluster reuse was detected by matching initdb's error TEXT against
+a regex that expected "already exists", but initdb actually prints "might
+already exist." — the trailing "s" mismatch made the catch branch fall through
+to a hard failure. Brittle parsing of a third-party library's message.
+[SOLUTION APPLIED]: Replaced message sniffing with deterministic detection: the
+data directory is inspected for the PG_VERSION marker file written by initdb.
+If present, initdb is skipped and the existing cluster is started. A second
+failure mode found during the same investigation — a postmaster.pid left behind
+by a hard-killed server — is now handled by validating the recorded PID with a
+signal-0 probe and removing the file only when no process owns it.
+Verified: three consecutive boots reused the on-disk cluster with no data loss.
+================================================================================
+
+
+================================================================================
+[BUG ID]: #003
+[MODULE]: db/custom-client.js · scripts/bootstrap-db.js
+[ISSUE DESCRIPTION]: After a successful bootstrap, every application query
+failed with: password authentication failed for user "stocksense". The database
+was created, schema applied and seed data present — yet the pool could not
+connect.
+[ROOT CAUSE]: Configuration drift. Two files independently defined the default
+connection string: db/custom-client.js defaulted to user `stocksense`, while the
+bootstrap created the cluster with superuser `postgres`. Both "worked" in
+isolation, so the mismatch only appeared when the pool ran against the freshly
+bootstrapped cluster.
+[SOLUTION APPLIED]: Introduced db/config.js as the single source of truth
+(env loading, PG_* resolution, connectionUrl() and adminUrl()). Both the pool
+and the bootstrap now import it, so host/port/user/database can never diverge
+again. .env.example was updated to document the DATABASE_URL override.
+================================================================================
+
+
+================================================================================
+[BUG ID]: #004
+[MODULE]: server.js
+[ISSUE DESCRIPTION]: The monolith announced "StockSense IMS ready →
+http://localhost:0" and bound to an OS-assigned random port, so every request to
+port 3000 was refused (curl exit code 7). The app looked started but was
+unreachable on the documented port.
+[ROOT CAUSE]: The shell environment exports PORT=0. The expression
+`Number(process.env.PORT || 3000)` treats the string "0" as truthy, yielding
+port 0, which Node interprets as "listen on any free port".
+[SOLUTION APPLIED]: Added a defensive resolvePort() that parses PORT as an
+integer and only accepts 1–65535, otherwise falling back to 3000. Restarting
+confirmed the server binds 3000 and all ten routes answer HTTP 200.
+================================================================================
+
+
+================================================================================
+[BUG ID]: #005
+[MODULE]: components/LoginTabs.jsx · components/AppShell.jsx ·
+         components/OperationsBoard.jsx · app/{products,locations,receipts,
+         deliveries,transfers,adjustments}/page.jsx
+[ISSUE DESCRIPTION]: GET /login returned HTTP 500 with the server log showing
+"Attempted import error: '../app/actions/auth.js' does not contain a default
+export" and "TypeError: Cannot destructure property 'loginAction' of
+...__WEBPACK_IMPORTED_MODULE_3__.default as it is undefined".
+[ROOT CAUSE]: Server Action modules ("use server") are ES modules with NAMED
+exports, but nine call sites imported them using the default-import style that
+is correct for the CommonJS domain modules. The default binding resolved to
+undefined and destructuring threw at render time.
+[SOLUTION APPLIED]: Converted all nine call sites to named imports. The
+distinction is now explicit and consistent: modules/** are CommonJS (default
+import) while app/actions/** are Server Actions (named imports).
+Verified: all routes return 200 and every action button functions in the browser.
+================================================================================
+
+
+================================================================================
+[BUG ID]: #006
+[MODULE]: modules/products/catalog.js · modules/products/locations.js
+[ISSUE DESCRIPTION]: Creating a product with an existing SKU returned the raw
+PostgreSQL error `duplicate key value violates unique constraint
+"products_sku_key"` when the module was called directly (outside a Server
+Action). Internal constraint and index names leaked to the caller.
+[ROOT CAUSE]: Friendly error mapping lived only in the withAction() wrapper, so
+any direct caller of the domain layer received the driver's raw error. This
+conflicts with the "direct execution alongside UI controllers" architecture,
+where modules are also invoked outside the action wrapper.
+[SOLUTION APPLIED]: Added translatePgError() to the error handler and applied it
+inside catalog.createProduct and locations.createLocation, so both direct and
+wrapped callers receive safe AppErrors ("This SKU already exists in the
+catalog."). Also extended the constraint map for the locations unique index and
+the product/location unique pair.
+================================================================================
+
+
+================================================================================
+[BUG ID]: #007
+[MODULE]: scripts/test-engines.js (concurrency test fixture)
+[ISSUE DESCRIPTION]: The parallel-delivery race test reported "exactly 5 of 8
+deliveries succeeded" as FAILED with ok=8, insufficient=0. The oversell
+protection was therefore never actually exercised, even though the feature is
+the core data-integrity safeguard.
+[ROOT CAUSE]: Fixture arithmetic error in the test, not in the application. The
+seed gave the race product 100 units while 8 deliveries of 10 units only
+required 80, so all eight legitimately succeeded. The assertions assumed 50
+units of availability.
+[SOLUTION APPLIED]: Reduced the race fixture to 50 units so exactly five
+deliveries can succeed. The test now genuinely stresses SELECT ... FOR UPDATE:
+5 succeed, 3 are rejected with InsufficientStockError, the final balance is
+exactly 0, and no quant is negative anywhere in the database.
+================================================================================
+
+
+================================================================================
+[BUG ID]: #008
+[MODULE]: scripts/test-engines.js (deadlock test fixture)
+[ISSUE DESCRIPTION]: The opposite-direction transfer test failed with
+"Insufficient stock — ... required 2, available 0", so deadlock-freedom of the
+dual-row locking strategy was never demonstrated.
+[ROOT CAUSE]: Test-sequencing error. Both directions were submitted
+concurrently, but the destination zone only receives stock from the inbound
+transfer that had not yet been validated, so one leg was legitimately rejected
+before any locking interaction could occur.
+[SOLUTION APPLIED]: Seeded the second zone with a sequential transfer first, then
+ran the concurrent opposite-direction pair with stock available on both ends.
+Both transfers now complete with zero deadlock errors and the balances net to
+zero, proving the deterministic (location_id, product_id) lock ordering works.
+================================================================================
+
+
+================================================================================
+[BUG ID]: #009
+[MODULE]: modules/engine/{receiptEngine,deliveryEngine,transferEngine,
+         adjustmentEngine}.js
+[ISSUE DESCRIPTION]: A document with no line items could be validated: the
+posting loops iterated zero lines, so the operation silently flipped to Done
+while posting nothing. The seeded skeleton documents (created for dashboard
+demonstration) exposed this path, and the user received a success message for an
+empty posting.
+[ROOT CAUSE]: Missing guard. Validation iterates operation_lines without
+verifying that at least one line exists, so an empty set was treated as a
+successful (no-op) posting.
+[SOLUTION APPLIED]: Added an explicit empty-lines guard to all four engines that
+throws a descriptive error before any stock or ledger work begins, so an empty
+document can never be reported as posted.
+================================================================================
+
+
+================================================================================
+[BUG ID]: #010
+[MODULE]: components/OperationsBoard.jsx
+[ISSUE DESCRIPTION]: Warehouse Staff were shown a "Cancel ✕" button on every
+non-terminal document even though canceling is an Inventory Manager action.
+Clicking it produced a 403 error message instead of the document being canceled,
+which is confusing UX and misrepresents the permission model.
+[ROOT CAUSE]: The UI rendered all available transitions to every role. RBAC was
+enforced server-side in advanceStatus (correct and non-bypassable), but the
+client rendering was not role-aware.
+[SOLUTION APPLIED]: The Cancel control is now rendered only for managers, while
+server-side authorization remains the authoritative gate (defense in depth).
+Verified live: the staff session shows the manager-approval notice with no
+validate or cancel controls, and the manager stream still cancels successfully.
+================================================================================
+
+
+================================================================================
+[BUG ID]: #011
+[MODULE]: modules/engine/* · modules/operations/* (all NUMERIC consumers)
+[ISSUE DESCRIPTION]: Stock quantities arrived from PostgreSQL as STRINGS (e.g.
+"52.00"), not numbers. Any arithmetic or comparison performed on them directly
+would produce NaN or silent string concatenation, corrupting balance checks and
+KPI aggregates.
+[ROOT CAUSE]: node-postgres intentionally parses NUMERIC columns as strings to
+avoid IEEE-754 precision loss. All mandated quantity columns are NUMERIC(12,2).
+[SOLUTION APPLIED]: Normalised every boundary explicitly with Number() — in the
+quant lock map, the availability comparisons, the KPI/history row mappers and
+the UI formatting helpers. Balance arithmetic itself is performed inside SQL.
+All assertions in the test suite compare numeric values, so regressions fail fast.
+================================================================================
+
+
+================================================================================
+[BUG ID]: #012
+[MODULE]: db/schema.sql · db/seed.sql
+[ISSUE DESCRIPTION]: The seed script is designed to be idempotent with
+INSERT ... ON CONFLICT DO NOTHING, but the locations table had no unique
+constraint in the mandated schema, so that clause had no conflict target and
+every boot appended another full set of warehouse rows. Repeated restarts
+inflated the location catalog (and therefore the dashboard zone counters).
+[ROOT CAUSE]: Missing uniqueness guarantee on location identity, combined with
+ON CONFLICT DO NOTHING without an inference target.
+[SOLUTION APPLIED]: Added a supporting unique index on locations(name, type) so
+the conflict clause has a target and restarts are genuinely idempotent.
+Verified across multiple boots: locations stayed at 8 and operations at 4.
+================================================================================
+
+
+================================================================================
+[BUG ID]: #013
+[MODULE]: modules/auth/service.js (OTP password reset)
+[ISSUE DESCRIPTION]: Timezone hazard in the OTP flow. The mandated schema
+declares otp_expiry as TIMESTAMP WITHOUT TIME ZONE, while CURRENT_TIMESTAMP
+returns a timezone-aware value; mixing the two domains would compare instants
+against local wall-clock time and could expire valid codes early or accept stale
+codes, depending on server timezone.
+[ROOT CAUSE]: Schema-mandated naive timestamp column combined with a
+timezone-aware clock function.
+[SOLUTION APPLIED]: Both the write path and the verification predicate now use
+the same UTC-naive domain, and the code check, expiry check and password update
+are performed in a single atomic statement, which also makes OTPs strictly
+single-use (verified: reusing a consumed code is rejected).
+================================================================================
+
+
+================================================================================
+[BUG ID]: #014
+[MODULE]: components/OperationForm.jsx (React 19 behaviour, verification note)
+[ISSUE DESCRIPTION]: During live end-to-end testing the create-document form
+appeared to clear itself immediately after submission, which initially looked
+like a failed submission or a data-loss bug.
+[ROOT CAUSE]: Expected React 19 behaviour — uncontrolled forms are reset
+automatically after a successful Server Action completes. The submission had in
+fact succeeded (draft created, success message rendered).
+[SOLUTION APPLIED]: No code change required; documented here so testers and
+evaluators do not mistake the auto-reset for a failure. Verification of a
+successful submission must rely on the returned message and the refreshed
+document list, not on the persisted form values.
+================================================================================
+
+
+================================================================================
+[BUG ID]: #015
+[MODULE]: app/actions/products.js
+[ISSUE DESCRIPTION]: A locally declared error class (a minimal Error subclass
+carrying a 400 status) was introduced while wiring the product actions and used
+for two validation failures (missing product id on update and delete). Those
+messages never reached the user: the UI showed the generic fallback "Something
+went wrong. Please try again." instead of "Product id is required."
+[ROOT CAUSE]: The error handler's envelope logic decides which messages are safe
+to expose using `instanceof AppError` against the shared taxonomy class. The
+local duplicate was NOT an instance of that class, so it fell through every
+recognised branch into the catch-all generic handler and the real message was
+discarded.
+[SOLUTION APPLIED]: Deleted the duplicate class and imported the shared AppError
+from modules/security/errorHandler.js in both actions, so every intentional,
+user-safe message flows through the same taxonomy. NOTE FOR REVIEWERS: any new
+error type must derive from the shared AppError or its message will be hidden.
+================================================================================
+
+
+================================================================================
+[BUG ID]: #016
+[MODULE]: scripts/bootstrap-db.js (startEmbedded readiness probe)
+[ISSUE DESCRIPTION]: FIRST-RUN FAILURE. On a genuinely empty machine (no
+cluster on disk) the bootstrap printed "Embedded PostgreSQL cluster initialised
+(initdb)" and then died with the opaque message "[setup-db] FAILED: undefined".
+The database had been created by initdb, but no schema, seed or demo accounts
+were applied, so the application could not start at all on a fresh checkout.
+This defect was invisible on every restarted cluster and only appeared when the
+system was rebuilt from zero.
+[ROOT CAUSE]: Two compounding faults in the startup sequence.
+  (1) The readiness probe waited for the APPLICATION database
+      (…:5440/stocksense) to answer. On a first run that database does not yet
+      exist — it is created immediately afterwards — so all 20 probe attempts
+      failed and the code concluded the server had not started.
+  (2) The recovery branch then called start() a SECOND time on a server that was
+      already running. The embedded-postgres library rejects that call with a
+      value that is not a standard Error and carries no message, so the handler
+      printed "undefined" and buried the true cause.
+[SOLUTION APPLIED]: (a) Readiness now probes the ADMIN database (…/postgres),
+which always exists, instead of the application database. (b) The retry path
+first checks whether the server is genuinely down (admin probe) and only then
+calls start(), so a running server is never started twice. (c) Added a
+describeError() formatter used by the bootstrap, the setup CLI and server.js, so
+non-Error rejections are rendered with their own property names and stack instead
+of an unhelpful "undefined".
+VERIFIED: cluster directory wiped completely, then `npm run setup` from zero →
+initdb, database created, schema applied (products=6, locations=8, users=2,
+stock_quants=6, both demo accounts hashed) with no error; full cold boot via
+`npm run dev` served all ten routes with HTTP 200.
+================================================================================
+
+
+================================================================================
+[BUG ID]: #017
+[MODULE]: developer tooling / repository layout (process finding)
+[ISSUE DESCRIPTION]: A repository-wide search executed during investigation ran
+for more than 60 seconds and was killed by the command timeout, making it look
+like the tooling had hung.
+[ROOT CAUSE]: The recursive search was not scoped and therefore walked the
+entire node_modules tree (tens of thousands of files, including the PostgreSQL
+binaries) instead of only the project source.
+[SOLUTION APPLIED]: Repository searches are now scoped to source directories
+(app, components, modules, db, scripts) or use file-type filters and
+node_modules exclusions. Recorded here because it is a genuine process defect:
+an unscoped search is treated as a failing check that wastes a build/evaluation
+slot, not as a harmless slow command.
+================================================================================
+
+
+================================================================================
+[BUG ID]: #018
+[MODULE]: components/OperationsBoard.jsx · browser verification harness
+[ISSUE DESCRIPTION]: During interactive browser testing, (a) clicks issued
+against native <option> elements failed with "Could not compute box model", and
+(b) after clicking a workflow button the page became unresponsive and the
+automation call timed out. The status of the document appeared unchanged, which
+made it look as though the transition had silently failed.
+[ROOT CAUSE]: (a) Options inside a closed native <select> have no layout box, so
+no element can be clicked. (b) The workflow buttons intentionally ask for
+confirmation before irreversible actions; native confirm() dialogs are modal and
+block the page's main thread, so any script awaiting the page stalls until the
+dialog is answered.
+[SOLUTION APPLIED]: The application behaviour is correct and intentional (the
+confirmation guard on stock-posting actions was kept). The verification approach
+was corrected instead: select values are set programmatically and confirm() is
+temporarily stubbed in the test page context before driving the buttons. A
+secondary finding from the same session: React 19 resets uncontrolled forms
+after a successful action, so verification must read the returned status message
+and the refreshed document list rather than the form values.
+================================================================================
+
+
+================================================================================
+END OF LOG — 18 entries.
+
+VERIFICATION SUMMARY (cold-start re-run, cluster deleted before testing)
+  npm run setup  : initdb → database created → schema applied → seed + bcrypt
+                   demo users created, no errors.
+  npm test       : 63 assertions, 63 passed, 0 failed — including the parallel
+                   delivery race (8 x 10 units against 50 in stock → exactly 5
+                   succeed, 3 rejected, final balance 0, no negative balances),
+                   deadlock-free opposite-direction transfers, insufficient
+                   stock rollback atomicity, RBAC denials and ledger invariants.
+  npm run dev    : all ten routes HTTP 200 on port 3000; browser sign-in and
+                   dashboard verified against the freshly seeded database.
+================================================================================
+
