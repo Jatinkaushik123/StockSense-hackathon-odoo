@@ -1,0 +1,39 @@
+[bootstrap] No reachable PostgreSQL — starting embedded instance...
+[bootstrap] Embedded cluster detected on disk (PG_VERSION) — skipping initdb.
+[bootstrap] Cleared stale postmaster.pid from a previous hard shutdown.
+[bootstrap] Embedded PostgreSQL listening on port 5440.
+[bootstrap] Schema applied. products=6 locations=8 users=5 stock_quants=6
+
+  StockSense IMS ready → http://localhost:3000
+
+ ○ Compiling /login ...
+ ✓ Compiled /login in 2.2s (764 modules)
+ GET /login 200 in 3135ms
+ ○ Compiling / ...
+ ✓ Compiled / in 2.9s (890 modules)
+ GET / 307 in 4031ms
+ GET / 200 in 419ms
+ ○ Compiling /history ...
+ ✓ Compiled /history in 530ms (895 modules)
+ GET /history 200 in 1492ms
+ ○ Compiling /products ...
+ ✓ Compiled /products in 704ms (908 modules)
+ GET /products 200 in 1376ms
+ GET /login 307 in 108ms
+ GET / 307 in 91ms
+ GET / 307 in 83ms
+ GET / 307 in 80ms
+ GET / 307 in 98ms
+ GET /products 200 in 125ms
+ GET / 200 in 347ms
+ GET / 200 in 359ms
+ GET /login 200 in 64ms
+ GET / 307 in 209ms
+ GET / 200 in 423ms
+ ○ Compiling /receipts ...
+ ✓ Compiled /receipts in 759ms (914 modules)
+ GET /receipts 200 in 1807ms
+ GET /login 200 in 92ms
+ POST /receipts 303 in 188ms
+ ✓ Compiled /products in 153ms (696 modules)
+ GET /products 307 in 531ms
