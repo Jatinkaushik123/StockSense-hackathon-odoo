@@ -4,7 +4,10 @@
   "private": true,
   "description": "StockSense - Enterprise IMS: pure PostgreSQL double-entry stock ledger, Next.js monolith with Server Actions",
   "scripts": {
-    "dev": "node server.js",
+    "dev": "node scripts/start-all.js",
+    "dev:backend": "node server.js",
+    "dev:frontend": "npm --prefix Frontend run dev",
+    "build:frontend": "npm --prefix Frontend run build",
     "start": "node server.js",
     "setup": "node scripts/setup-db.js",
     "user:create": "node scripts/create-user.js",

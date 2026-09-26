@@ -35,15 +35,28 @@ async function main() {
   await app.prepare();
 
   const server = http.createServer((req, res) => handle(req, res));
+  
+  server.on('error', (err) => {
+    console.error('[server] HTTP server error:', err && (err.message || err));
+  });
+
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`\n  StockSense IMS ready → http://localhost:${PORT}\n`);
   });
 
-  const shutdown = () => {
+  const shutdown = async () => {
     server.close(() => process.exit(0));
   };
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
+
+  process.on('uncaughtException', (err) => {
+    console.error('[server] uncaughtException:', err && (err.stack || err.message || err));
+  });
+
+  process.on('unhandledRejection', (reason) => {
+    console.error('[server] unhandledRejection:', reason && (reason.stack || reason.message || reason));
+  });
 }
 
 main().catch((err) => {

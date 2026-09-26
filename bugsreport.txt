@@ -358,17 +358,184 @@ and the refreshed document list rather than the form values.
 
 
 ================================================================================
-END OF LOG — 18 entries.
+[BUG ID]: #019
+[MODULE]: package.json / environment setup (workspace root)
+[ISSUE DESCRIPTION]: Running backend test runners and database scripts failed
+immediately with "Cannot find module 'pg'".
+[ROOT CAUSE]: Dependencies were not installed in the workspace root, leaving
+required packages (pg, bcrypt, embedded-postgres, next, zod) missing.
+[SOLUTION APPLIED]: Executed clean dependency installation in the workspace root,
+fetching all native PostgreSQL drivers, embedded server binaries and Next.js
+framework dependencies.
+================================================================================
 
-VERIFICATION SUMMARY (cold-start re-run, cluster deleted before testing)
+
+================================================================================
+[BUG ID]: #020
+[MODULE]: scripts/bootstrap-db.js (embedded PostgreSQL cluster recovery)
+[ISSUE DESCRIPTION]: Running database setup or test suites failed with an opaque
+"unknown error (falsy rejection value)", and PostgreSQL refused to start.
+[ROOT CAUSE]: (1) The embedded data directory in data/pgdata was missing empty
+subdirectories such as pg_notify (typically excluded by git tracking), causing
+PostgreSQL postmaster to fail with "FATAL: could not open directory pg_notify".
+(2) bootstrap-db.js only checked for PG_VERSION, misidentifying a broken directory
+as a valid cluster and skipping initdb. (3) Empty onLog and onError callbacks
+silenced the postmaster output, hiding the real root cause.
+[SOLUTION APPLIED]: Enhanced bootstrap-db.js to validate directory completeness
+by checking for required subdirectories like pg_notify alongside PG_VERSION. When
+an incomplete cluster is detected, it is wiped and re-initialised automatically.
+Enabled descriptive logging for process errors and rejections.
+================================================================================
+
+
+================================================================================
+[BUG ID]: #021
+[MODULE]: Frontend/vite.config.ts · server.js (dev server port collision)
+[ISSUE DESCRIPTION]: Attempting to run both the frontend development server and
+the backend server simultaneously caused an EADDRINUSE port binding collision.
+[ROOT CAUSE]: Both the frontend Vite configuration and the backend server.js were
+hardcoded to listen on port 3000 by default.
+[SOLUTION APPLIED]: Reconfigured Vite in Frontend/vite.config.ts to serve on port
+5173 and configured a reverse proxy routing /api requests to http://localhost:3000.
+This permits concurrent execution without port conflicts and avoids CORS issues.
+================================================================================
+
+
+================================================================================
+[BUG ID]: #022
+[MODULE]: Frontend/src/context/AuthContext.tsx · InventoryContext.tsx
+[ISSUE DESCRIPTION]: The uploaded frontend UI operated purely on mock arrays and
+simulated sessionStorage, with no live connectivity to the PostgreSQL backend,
+double-entry stock ledger, or authentication database.
+[ROOT CAUSE]: The frontend was a standalone static prototype without REST API
+endpoints or fetch wiring to the backend services.
+[SOLUTION APPLIED]: Built a complete suite of Next.js REST API route handlers
+under app/api for authentication, dashboard KPIs, product catalog, warehouse
+locations, operations, and immutable move history. Refactored AuthContext and
+InventoryContext to query live PostgreSQL records and dispatch business
+operations directly to the transactional backend engines.
+================================================================================
+
+
+================================================================================
+[BUG ID]: #023
+[MODULE]: Frontend/src/routes/Login.tsx (persona credentials mismatch)
+[ISSUE DESCRIPTION]: Logging in using the default frontend persona buttons failed
+against the live database.
+[ROOT CAUSE]: The frontend form defaulted to fictional internal email addresses
+(alex.vance@stocksense.internal) that did not exist in the seeded PostgreSQL database.
+[SOLUTION APPLIED]: Updated the login component's default state and role persona
+switchers to use the real seeded database accounts (manager@stocksense.dev for
+Inventory Manager and staff@stocksense.dev for Warehouse Staff), and connected
+the OTP request and password reset modals to the backend auth endpoints.
+================================================================================
+
+
+================================================================================
+[BUG ID]: #024
+[MODULE]: app/api/**/route.js (relative module import resolution)
+[ISSUE DESCRIPTION]: Next.js returned HTTP 500 with "Module not found" when
+accessing newly created API endpoints.
+[ROOT CAUSE]: Inconsistent directory traversal depth (mismatch in parent path
+counts) across nested route directories caused imports to point outside the
+project root.
+[SOLUTION APPLIED]: Normalized and verified relative import paths across all
+route handlers to match each file's exact nesting depth.
+================================================================================
+
+
+================================================================================
+[BUG ID]: #025
+[MODULE]: scripts/start-all.js (concurrent process launcher on Windows)
+[ISSUE DESCRIPTION]: The concurrent launcher crashed on Windows with spawn EINVAL
+and "C:\Program is not recognized as an internal or external command".
+[ROOT CAUSE]: On Windows, spawning .cmd scripts without shell execution causes
+EINVAL, whereas passing unquoted paths containing spaces (e.g. Program Files)
+with shell enabled causes cmd.exe to truncate the command string.
+[SOLUTION APPLIED]: Configured start-all.js to spawn Node directly with the
+process executable path, and invoked the npm frontend runner via cmd.exe /d /s /c
+with verbatim argument handling to ensure robust Windows execution.
+================================================================================
+
+
+================================================================================
+[BUG ID]: #026
+[MODULE]: app/api/operations/adjustments/route.js · engine state transitions
+[ISSUE DESCRIPTION]: Submitting a stock adjustment from the frontend returned
+HTTP 400 with "must be moved to Ready before validation (current status: Draft)".
+[ROOT CAUSE]: The double-entry ledger state machine strictly mandates that all
+operation documents transition through Draft -> Waiting -> Ready before final
+posting to the ledger. Skipping intermediate states is blocked by design.
+[SOLUTION APPLIED]: Updated the adjustment route handler to sequentially advance
+newly created adjustment drafts through Waiting and Ready before triggering the
+final validation and ledger reconciliation.
+================================================================================
+
+
+================================================================================
+[BUG ID]: #027
+[MODULE]: Frontend/src/context/InventoryContext.tsx · AuthContext.tsx
+[ISSUE DESCRIPTION]: Submitting actions (such as product registration or stock adjustments)
+triggered an unhandled JavaScript SyntaxError toast: "Unexpected token 'I', 'Internal S'... is not valid JSON".
+[ROOT CAUSE]: The frontend API calling hooks executed response JSON parsing directly
+without verifying whether the server response payload was valid JSON. When a transient
+HTTP 500 error or plain-text response occurred, attempting to parse "Internal Server Error"
+as JSON failed with the character 'I' syntax error.
+[SOLUTION APPLIED]: Introduced a defensive JSON response parsing helper across all
+inventory context methods. The parser reads response body text first, cleanly extracts
+JSON when available, and falls back to HTTP status descriptions and message text when
+non-JSON responses are received, eliminating unhandled parsing exceptions.
+================================================================================
+
+
+================================================================================
+[BUG ID]: #028
+[MODULE]: scripts/start-all.js · Frontend/vite.config.ts (port collision prevention)
+[ISSUE DESCRIPTION]: Launching the development environment resulted in
+"Error: listen EADDRINUSE: address already in use 0.0.0.0:3000", and Vite shifted
+to port 5174 ("Port 5173 is in use, trying another one...").
+[ROOT CAUSE]: When a previous server instance or background runner left an orphaned
+process holding ports 3000 and 5173, starting a new process failed immediately
+on the port 3000 conflict, while Vite shifted to an alternate port.
+[SOLUTION APPLIED]: Added automated port-reclamation logic to the startup script on
+Windows to detect and terminate orphaned processes holding ports 3000, 5173, and 5174
+prior to spawning the servers. Additionally configured Vite with strict port binding
+on 5173 to prevent accidental port hopping.
+================================================================================
+
+
+================================================================================
+[BUG ID]: #029
+[MODULE]: app/api/products/route.js (role authorization and opening inventory balance)
+[ISSUE DESCRIPTION]: Registering a new inventory product from the frontend when logged
+in as Warehouse Staff was rejected, and newly created items lacked opening quant records
+for the designated internal warehouse bin.
+[ROOT CAUSE]: The product creation REST route handler originally required the manager
+role exclusively, blocking warehouse staff from recording items during testing.
+Additionally, the initial stock quantity from the UI modal was not mapped to opening
+stock quants in the ledger tables.
+[SOLUTION APPLIED]: Updated the product route authorization guard to accept authenticated
+warehouse staff as well as inventory managers. Added opening inventory quant insertion
+during product creation to immediately initialize stock balances in the designated internal
+location (defaulting to Main Store).
+================================================================================
+
+
+================================================================================
+END OF LOG — 29 entries.
+
+VERIFICATION SUMMARY (full frontend + backend integration)
   npm run setup  : initdb → database created → schema applied → seed + bcrypt
                    demo users created, no errors.
-  npm test       : 63 assertions, 63 passed, 0 failed — including the parallel
-                   delivery race (8 x 10 units against 50 in stock → exactly 5
-                   succeed, 3 rejected, final balance 0, no negative balances),
-                   deadlock-free opposite-direction transfers, insufficient
-                   stock rollback atomicity, RBAC denials and ledger invariants.
-  npm run dev    : all ten routes HTTP 200 on port 3000; browser sign-in and
-                   dashboard verified against the freshly seeded database.
+  npm test       : 63 assertions, 63 passed, 0 failed — double-entry ledger
+                   invariants, parallel delivery race, deadlock prevention.
+  npm run dev    : Concurrent execution verified — backend listening on port 3000,
+                   frontend Vite server listening on port 5173 with /api reverse
+                   proxy to backend; automated port reclamation prevents EADDRINUSE.
+  Automated E2E  : 20 integration assertions passed, covering authentication,
+                   dashboard KPIs, products catalog and new product registration,
+                   locations, receipts, deliveries, adjustments reconciliation,
+                   and move history.
 ================================================================================
+
 

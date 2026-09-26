@@ -128,15 +128,23 @@ async function startEmbedded() {
     password: PG_PASSWORD,
     port: PG_PORT,
     persistent: true,
-    onLog: () => {},
-    onError: () => {},
+    onLog: (msg) => console.log('[pg-log]', msg),
+    onError: (err) => console.error('[pg-err]', err),
   };
 
   fs.mkdirSync(EMBEDDED_DIR, { recursive: true });
 
   const pg = new EmbeddedPostgres(options);
   const marker = path.join(EMBEDDED_DIR, 'PG_VERSION');
-  const alreadyInitialised = fs.existsSync(marker);
+  const notifyDir = path.join(EMBEDDED_DIR, 'pg_notify');
+  let alreadyInitialised = fs.existsSync(marker) && fs.existsSync(notifyDir);
+
+  if (fs.existsSync(marker) && !fs.existsSync(notifyDir)) {
+    console.warn('[bootstrap] Partial/corrupted cluster detected (missing pg_notify) — re-initialising.');
+    fs.rmSync(EMBEDDED_DIR, { recursive: true, force: true });
+    fs.mkdirSync(EMBEDDED_DIR, { recursive: true });
+    alreadyInitialised = false;
+  }
 
   if (!alreadyInitialised) {
     await pg.initialise();

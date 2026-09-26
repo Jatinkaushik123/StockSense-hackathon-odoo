@@ -1,1 +1,1 @@
-F:/StockSense/node_modules/@embedded-postgres/windows-x64/native/bin/postgres.exe "-D" "F:\StockSense\data\pgdata" "-p" "5440"
+C:/Users/kaush/OneDrive/Desktop/Coding/StockSense-hackathon-odoo/node_modules/@embedded-postgres/windows-x64/native/bin/postgres.exe "-D" "C:\Users\kaush\OneDrive\Desktop\Coding\StockSense-hackathon-odoo\data\pgdata" "-p" "5440"
