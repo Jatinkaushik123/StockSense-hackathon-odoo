@@ -1,6 +1,6 @@
-# StockSense — Enterprise Inventory Management
+# StockSense — Modular Inventory Management System (IMS)
 
-This repository contains the design references and initial project foundation for **StockSense**, a high-density, mission-critical enterprise inventory and warehouse operations web platform.
+This repository contains the design references and frontend codebase for **StockSense**, a high-density, mission-critical modular enterprise inventory and warehouse operations web platform.
 
 ---
 
