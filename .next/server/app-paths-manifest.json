@@ -1,0 +1,11 @@
+{
+  "/stock/page": "app/stock/page.js",
+  "/transfers/page": "app/transfers/page.js",
+  "/products/page": "app/products/page.js",
+  "/receipts/page": "app/receipts/page.js",
+  "/locations/page": "app/locations/page.js",
+  "/page": "app/page.js",
+  "/deliveries/page": "app/deliveries/page.js",
+  "/adjustments/page": "app/adjustments/page.js",
+  "/login/page": "app/login/page.js"
+}
