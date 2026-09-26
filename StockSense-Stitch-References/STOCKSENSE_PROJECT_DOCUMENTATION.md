@@ -1,4 +1,4 @@
-# StockSense — Enterprise Inventory Management
+# StockSense — Modular Inventory Management System (IMS)
 ## Project Documentation & Design Reference Analysis
 
 ---
@@ -23,7 +23,7 @@ The workspace contains the original design references exported from Google Stitc
 
 | Directory | Core Files | Role & Representation |
 |:---|:---|:---|
-| `stocksense_brand_logo/` | `code.html`, `screen.png` | Official StockSense branding vector SVG logo (geometric isometric cube with accent node in `#4F46E5` container) and reference rendering. |
+| `stocksense_brand_logo/` | `code.html`, `screen.png` | Official StockSense branding vector SVG logo (isometric warehouse cube with ascending cyan growth arrow, stepped velocity trendline, deep navy structure) and reference rendering. |
 | `stocksense_design_system/` | `DESIGN.md` | Authoritative visual design specification containing design tokens, color palette, semantic status framework, typography hierarchy, elevation levels, shapes, and component style specs. |
 | `stocksense_inventory_dashboard/` | `code.html`, `screen.png` | Complete HTML/Tailwind reference and viewport screenshot for the **Inventory Dashboard** page (KPI cards, donut chart, warehouse zone capacity progress bars, filter toolbar, active operations data table, pagination). |
 | `stocksense_receipt_rec_2026_0084/` | `code.html`, `screen.png` | Complete HTML/Tailwind reference and viewport screenshot for the **Receipt Detail** page (`REC-2026-0084`) (4-stage pipeline stepper, 3-column metadata card, discrepancy shortfall alert, barcode scanning bar, line items table with variance & QC status, reception notes, document valuation summary). |
@@ -196,7 +196,7 @@ src/assets/
 └── icons/              # Google Material Symbols Outlined font integration
 ```
 
-- **Logo SVG:** Preserves isometric 3D cube geometry, `#4F46E5` rounded container (`rx="6"`), `#FFFFFF` vector lines, `#A5B4FC` central node.
+- **Logo SVG:** Preserves isometric 3D modular warehouse cube geometry, ascending cyan growth vector (`#1B949C`), stepped inventory velocity graph (`#4A6F8A`), deep navy frame (`#0C2D50`), and official "MODULAR INVENTORY MANAGEMENT SYSTEM (IMS)" tagline.
 - **Icon Engine:** Google Material Symbols Outlined loaded via Google Fonts or bundled SVG icons.
 
 ---
